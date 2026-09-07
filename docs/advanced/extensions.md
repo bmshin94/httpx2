@@ -103,6 +103,30 @@ The following event types are currently exposed...
 
 The exact set of trace events may be subject to change across different versions of `httpcore2`. If you need to rely on a particular set of events it is recommended that you pin installation of the package to a fixed version.
 
+#### Tracing every request
+
+The `"trace"` extension is set per-request, and there is no client-level default for it. To instrument every request that a client makes — for example, to record how long requests spend waiting for a connection from a saturated pool — install the callback from a transport subclass...
+
+```python
+import httpx2
+
+async def log(event_name, info):
+    print(event_name, info)
+
+class TracingTransport(httpx2.AsyncHTTPTransport):
+    def __init__(self, trace, **kwargs):
+        super().__init__(**kwargs)
+        self._trace = trace
+
+    async def handle_async_request(self, request):
+        request.extensions = {"trace": self._trace, **request.extensions}
+        return await super().handle_async_request(request)
+
+client = httpx2.AsyncClient(transport=TracingTransport(trace=log))
+```
+
+A `"trace"` passed on an individual request still takes precedence over the transport's default. The sync equivalent subclasses `httpx2.HTTPTransport`, overrides `handle_request`, and uses a plain `def log(...)` callback.
+
 ### `"sni_hostname"`
 
 The server's hostname, which is used to confirm the hostname supplied by the SSL certificate.
