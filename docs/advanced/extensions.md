@@ -46,6 +46,8 @@ def log(event_name, info):
 
 client = httpx2.Client()
 response = client.get("https://www.example.com/", extensions={"trace": log})
+# connection_pool.wait_for_connection.started {'timeout': 5.0}
+# connection_pool.wait_for_connection.complete {'return_value': <HTTPConnection [CONNECTING]>}
 # connection.connect_tcp.started {'host': 'www.example.com', 'port': 443, 'local_address': None, 'timeout': 5.0, 'socket_options': None}
 # connection.connect_tcp.complete {'return_value': <httpcore2._backends.sync.SyncStream object at 0x1093f94d0>}
 # connection.start_tls.started {'ssl_context': <truststore._api.SSLContext object at 0x1093ee750>, 'server_hostname': 'www.example.com', 'timeout': 5.0}
@@ -71,6 +73,10 @@ The `event_name` and `info` arguments here will be one of the following:
 Note that when using async code the handler function passed to `"trace"` must be an `async def ...` function.
 
 The following event types are currently exposed...
+
+**Acquiring a connection from the pool**
+
+* `"connection_pool.wait_for_connection"`
 
 **Establishing the connection**
 
