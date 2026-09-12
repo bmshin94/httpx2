@@ -21,10 +21,7 @@ dynamic = ["readme", "version"]
 description = "A minimal low-level HTTP client."
 license = "BSD-3-Clause"
 requires-python = ">=3.10"
-authors = [{ name = "Tom Christie", email = "tom@tomchristie.com" }]
-maintainers = [
-    { name = "Pydantic Services Inc.", email = "engineering@pydantic.dev" },
-]
+maintainers = [{ name = "Pydantic Team", email = "engineering@pydantic.dev" }]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Environment :: Web Environment",
