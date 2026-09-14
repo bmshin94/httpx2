@@ -27,6 +27,20 @@ async def async_streaming_body() -> typing.AsyncIterator[bytes]:
     yield b"world!"
 
 
+class PlainAsyncIterator:
+    def __init__(self, chunks: list[bytes]) -> None:
+        self._chunks = iter(chunks)
+
+    def __aiter__(self) -> PlainAsyncIterator:
+        return self
+
+    async def __anext__(self) -> bytes:
+        try:
+            return next(self._chunks)
+        except StopIteration:
+            raise StopAsyncIteration from None
+
+
 def autodetect(content: bytes) -> str | None:
     return chardet.detect(content).get("encoding")
 
@@ -496,9 +510,8 @@ async def test_aiter_raw_with_chunksize() -> None:
 @pytest.mark.anyio
 async def test_aiter_bytes_override() -> None:
     class CustomResponse(httpx2.Response):
-        async def aiter_bytes(self, chunk_size: int | None = None) -> typing.AsyncIterator[bytes]:
-            yield b"Hello, "
-            yield b"world!"
+        def aiter_bytes(self, chunk_size: int | None = None) -> typing.AsyncIterator[bytes]:
+            return PlainAsyncIterator([b"Hello, ", b"world!"])
 
     response = CustomResponse(200, content=async_streaming_body())
     assert await response.aread() == b"Hello, world!"
@@ -507,9 +520,8 @@ async def test_aiter_bytes_override() -> None:
 @pytest.mark.anyio
 async def test_aiter_raw_override() -> None:
     class CustomResponse(httpx2.Response):
-        async def aiter_raw(self, chunk_size: int | None = None) -> typing.AsyncIterator[bytes]:
-            yield b"Hello, "
-            yield b"world!"
+        def aiter_raw(self, chunk_size: int | None = None) -> typing.AsyncIterator[bytes]:
+            return PlainAsyncIterator([b"Hello, ", b"world!"])
 
     response = CustomResponse(200, content=async_streaming_body())
     assert await response.aread() == b"Hello, world!"
