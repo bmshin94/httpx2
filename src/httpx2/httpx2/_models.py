@@ -7,7 +7,7 @@ import json as jsonlib
 import re
 import typing
 import urllib.request
-from collections.abc import AsyncGenerator, Mapping
+from collections.abc import Mapping
 from http.cookiejar import Cookie, CookieJar
 
 from ._content import ByteStream, UnattachedStream, encode_request, encode_response
@@ -52,6 +52,11 @@ __all__ = ["Cookies", "Headers", "Request", "Response"]
 SENSITIVE_HEADERS = {"authorization", "proxy-authorization"}
 
 _T = typing.TypeVar("_T")
+
+
+@typing.runtime_checkable
+class _AsyncClosable(typing.Protocol):
+    async def aclose(self) -> None: ...
 
 
 def _is_known_encoding(encoding: str) -> bool:
@@ -975,7 +980,7 @@ class Response:
             try:
                 self._content = b"".join([part async for part in parts])
             finally:
-                if isinstance(parts, AsyncGenerator):
+                if isinstance(parts, _AsyncClosable):
                     await parts.aclose()
         return self._content
 
@@ -999,7 +1004,7 @@ class Response:
                             for chunk in chunker.decode(decoded):
                                 yield chunk
                 finally:
-                    if isinstance(raw_stream, AsyncGenerator):
+                    if isinstance(raw_stream, _AsyncClosable):
                         await raw_stream.aclose()
                 for decoded in decoder.flush():
                     for chunk in chunker.decode(decoded):
@@ -1061,7 +1066,7 @@ class Response:
             for chunk in chunker.flush():
                 yield chunk
         finally:
-            if isinstance(stream, AsyncGenerator):
+            if isinstance(stream, _AsyncClosable):
                 await stream.aclose()
             await self.aclose()
 
