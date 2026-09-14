@@ -55,14 +55,6 @@ SENSITIVE_HEADERS = {"authorization", "proxy-authorization"}
 _T = typing.TypeVar("_T")
 
 
-def _aclosing_if_supported(
-    iterator: typing.AsyncIterator[_T],
-) -> contextlib.AbstractAsyncContextManager[typing.AsyncIterator[_T]]:
-    if isinstance(iterator, AsyncGenerator):
-        return contextlib.aclosing(iterator)
-    return contextlib.nullcontext(iterator)
-
-
 def _is_known_encoding(encoding: str) -> bool:
     """
     Return `True` if `encoding` is a known codec.
@@ -980,7 +972,9 @@ class Response:
         Read and return the response content.
         """
         if not hasattr(self, "_content"):
-            async with _aclosing_if_supported(self.aiter_bytes()) as parts:
+            parts = self.aiter_bytes()
+            closing = contextlib.aclosing(parts) if isinstance(parts, AsyncGenerator) else contextlib.nullcontext()
+            async with closing:
                 self._content = b"".join([part async for part in parts])
         return self._content
 
@@ -997,7 +991,13 @@ class Response:
             decoder = self._get_content_decoder()
             chunker = ByteChunker(chunk_size=chunk_size)
             with request_context(request=self._request):
-                async with _aclosing_if_supported(self.aiter_raw()) as raw_stream:
+                raw_stream = self.aiter_raw()
+                closing = (
+                    contextlib.aclosing(raw_stream)
+                    if isinstance(raw_stream, AsyncGenerator)
+                    else contextlib.nullcontext()
+                )
+                async with closing:
                     async for raw_bytes in raw_stream:
                         for decoded in decoder.decode(raw_bytes):
                             for chunk in chunker.decode(decoded):
