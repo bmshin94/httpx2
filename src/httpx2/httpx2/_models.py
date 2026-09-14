@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import codecs
+import contextlib
 import datetime
 import email.message
 import json as jsonlib
 import re
 import typing
 import urllib.request
-from collections.abc import Mapping
+from collections.abc import AsyncGenerator, Mapping
 from http.cookiejar import Cookie, CookieJar
 
 from ._content import ByteStream, UnattachedStream, encode_request, encode_response
@@ -52,11 +53,6 @@ __all__ = ["Cookies", "Headers", "Request", "Response"]
 SENSITIVE_HEADERS = {"authorization", "proxy-authorization"}
 
 _T = typing.TypeVar("_T")
-
-
-@typing.runtime_checkable
-class _AsyncClosable(typing.Protocol):
-    async def aclose(self) -> None: ...
 
 
 def _is_known_encoding(encoding: str) -> bool:
@@ -976,12 +972,9 @@ class Response:
         Read and return the response content.
         """
         if not hasattr(self, "_content"):
-            parts = self.aiter_bytes()
-            try:
+            parts = typing.cast(typing.AsyncGenerator[bytes, None], self.aiter_bytes())
+            async with contextlib.aclosing(parts):
                 self._content = b"".join([part async for part in parts])
-            finally:
-                if isinstance(parts, _AsyncClosable):
-                    await parts.aclose()
         return self._content
 
     async def aiter_bytes(self, chunk_size: int | None = None) -> typing.AsyncIterator[bytes]:
@@ -997,15 +990,12 @@ class Response:
             decoder = self._get_content_decoder()
             chunker = ByteChunker(chunk_size=chunk_size)
             with request_context(request=self._request):
-                raw_stream = self.aiter_raw()
-                try:
+                raw_stream = typing.cast(typing.AsyncGenerator[bytes, None], self.aiter_raw())
+                async with contextlib.aclosing(raw_stream):
                     async for raw_bytes in raw_stream:
                         for decoded in decoder.decode(raw_bytes):
                             for chunk in chunker.decode(decoded):
                                 yield chunk
-                finally:
-                    if isinstance(raw_stream, _AsyncClosable):
-                        await raw_stream.aclose()
                 for decoded in decoder.flush():
                     for chunk in chunker.decode(decoded):
                         yield chunk  # pragma: no cover
@@ -1066,7 +1056,7 @@ class Response:
             for chunk in chunker.flush():
                 yield chunk
         finally:
-            if isinstance(stream, _AsyncClosable):
+            if isinstance(stream, AsyncGenerator):
                 await stream.aclose()
             await self.aclose()
 

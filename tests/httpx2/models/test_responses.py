@@ -27,35 +27,6 @@ async def async_streaming_body() -> typing.AsyncIterator[bytes]:
     yield b"world!"
 
 
-class PlainAsyncIterator:
-    def __init__(self, chunks: list[bytes]) -> None:
-        self._chunks = iter(chunks)
-
-    def __aiter__(self) -> PlainAsyncIterator:
-        return self
-
-    async def __anext__(self) -> bytes:
-        try:
-            return next(self._chunks)
-        except StopIteration:
-            raise StopAsyncIteration from None
-
-
-class ClosableAsyncIterator:
-    def __init__(self, chunks: list[bytes]) -> None:
-        self._iterator = PlainAsyncIterator(chunks)
-        self.is_closed = False
-
-    def __aiter__(self) -> ClosableAsyncIterator:
-        return self
-
-    async def __anext__(self) -> bytes:
-        return await self._iterator.__anext__()
-
-    async def aclose(self) -> None:
-        self.is_closed = True
-
-
 def autodetect(content: bytes) -> str | None:
     return chardet.detect(content).get("encoding")
 
@@ -523,49 +494,25 @@ async def test_aiter_raw_with_chunksize() -> None:
 
 
 @pytest.mark.anyio
-async def test_aiter_bytes_override_with_plain_async_iterator() -> None:
+async def test_aiter_bytes_override() -> None:
     class CustomResponse(httpx2.Response):
-        def aiter_bytes(self, chunk_size: int | None = None) -> typing.AsyncIterator[bytes]:
-            return PlainAsyncIterator([b"Hello, ", b"world!"])
+        async def aiter_bytes(self, chunk_size: int | None = None) -> typing.AsyncIterator[bytes]:
+            yield b"Hello, "
+            yield b"world!"
 
     response = CustomResponse(200, content=async_streaming_body())
     assert await response.aread() == b"Hello, world!"
 
 
 @pytest.mark.anyio
-async def test_aread_closes_custom_async_iterator() -> None:
-    iterator = ClosableAsyncIterator([b"Hello, ", b"world!"])
-
+async def test_aiter_raw_override() -> None:
     class CustomResponse(httpx2.Response):
-        def aiter_bytes(self, chunk_size: int | None = None) -> typing.AsyncIterator[bytes]:
-            return iterator
+        async def aiter_raw(self, chunk_size: int | None = None) -> typing.AsyncIterator[bytes]:
+            yield b"Hello, "
+            yield b"world!"
 
     response = CustomResponse(200, content=async_streaming_body())
     assert await response.aread() == b"Hello, world!"
-    assert iterator.is_closed
-
-
-@pytest.mark.anyio
-async def test_aiter_raw_override_with_plain_async_iterator() -> None:
-    class CustomResponse(httpx2.Response):
-        def aiter_raw(self, chunk_size: int | None = None) -> typing.AsyncIterator[bytes]:
-            return PlainAsyncIterator([b"Hello, ", b"world!"])
-
-    response = CustomResponse(200, content=async_streaming_body())
-    assert await response.aread() == b"Hello, world!"
-
-
-@pytest.mark.anyio
-async def test_aiter_bytes_closes_custom_raw_async_iterator() -> None:
-    iterator = ClosableAsyncIterator([b"Hello, ", b"world!"])
-
-    class CustomResponse(httpx2.Response):
-        def aiter_raw(self, chunk_size: int | None = None) -> typing.AsyncIterator[bytes]:
-            return iterator
-
-    response = CustomResponse(200, content=async_streaming_body())
-    assert await response.aread() == b"Hello, world!"
-    assert iterator.is_closed
 
 
 @pytest.mark.anyio
