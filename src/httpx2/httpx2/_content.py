@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import inspect
-import os
 import warnings
 from collections.abc import AsyncGenerator, AsyncIterable, AsyncIterator, Iterable, Iterator, Mapping
 from json import dumps as json_dumps
@@ -20,7 +19,7 @@ from ._types import (
     ResponseContent,
     SyncByteStream,
 )
-from ._utils import primitive_value_to_str
+from ._utils import peek_filelike_remaining_length, primitive_value_to_str
 
 __all__ = ["ByteStream"]
 
@@ -120,16 +119,12 @@ def encode_content(
         # catches a case that's easy for users to make in error, and would
         # otherwise pass through here, like any other bytes-iterable,
         # because `dict` happens to be iterable. See issue #2491.
-        headers = {"Transfer-Encoding": "chunked"}
-        if hasattr(content, "tell") and hasattr(content, "seek"):
-            try:
-                offset = content.tell()
-                length = content.seek(0, os.SEEK_END)
-                content.seek(offset)
-            except (AttributeError, OSError):
-                pass
-            else:
-                headers = {"Content-Length": str(max(0, length - offset))}
+        content_length_or_none = peek_filelike_remaining_length(content)
+
+        if content_length_or_none is None:
+            headers = {"Transfer-Encoding": "chunked"}
+        else:
+            headers = {"Content-Length": str(content_length_or_none)}
         return headers, IteratorByteStream(content)
 
     elif isinstance(content, AsyncIterable):
