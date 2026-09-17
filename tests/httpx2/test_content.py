@@ -1,9 +1,16 @@
+from __future__ import annotations
+
 import io
+import os
+import tempfile
 import typing
 
 import pytest
 
 import httpx2
+
+if typing.TYPE_CHECKING:
+    from tests.httpx2.conftest import TestServer
 
 method = "POST"
 url = "https://www.example.com"
@@ -65,6 +72,39 @@ async def test_bytesio_content() -> None:
 
     assert request.headers == {"Host": "www.example.com", "Content-Length": "13"}
     assert content == b"Hello, world!"
+
+
+@pytest.mark.parametrize("file_factory", [io.BytesIO, tempfile.TemporaryFile])
+@pytest.mark.parametrize("offset", [0, 4, 10, 15])
+def test_file_content(server: TestServer, file_factory: typing.Callable[[], typing.BinaryIO], offset: int) -> None:
+    with file_factory() as file, httpx2.Client() as client:
+        file.write(b"0123456789")
+        file.seek(offset)
+        expected = b"0123456789"[offset:]
+
+        request = client.build_request("POST", server.url.copy_with(path="/echo_body"), content=file)
+        assert file.tell() == offset
+        assert request.headers["Content-Length"] == str(len(expected))
+        response = client.send(request)
+        assert response.status_code == 200
+        assert response.content == expected
+
+        file.seek(offset)
+        response = httpx2.Response(200, content=file)
+        assert file.tell() == offset
+        assert response.headers["Content-Length"] == str(len(expected))
+        assert response.read() == expected
+
+
+def test_non_seekable_file_content() -> None:
+    read_fd, write_fd = os.pipe()
+    with os.fdopen(read_fd, "rb") as file:
+        with os.fdopen(write_fd, "wb") as writer:
+            writer.write(b"0123456789")
+        request = httpx2.Request(method, url, content=file)
+        assert request.headers["Transfer-Encoding"] == "chunked"
+        assert "Content-Length" not in request.headers
+        assert request.read() == b"0123456789"
 
 
 @pytest.mark.anyio

@@ -90,11 +90,15 @@ def to_bytes_or_str(value: str, match_type_of: typing.AnyStr) -> typing.AnyStr:
     return value if isinstance(match_type_of, str) else value.encode()
 
 
-def peek_filelike_length(stream: typing.Any) -> int | None:
+def peek_filelike_length(stream: typing.Any, *, from_current_position: bool = False) -> int | None:
     """
-    Given a file-like stream object, return its length in number of bytes
-    without reading it into memory.
+    Return the full or remaining length of a file-like stream without reading it.
     """
+    try:
+        start = stream.tell() if from_current_position else 0
+    except (AttributeError, OSError):
+        return None
+
     try:
         # Is it an actual file?
         fd = stream.fileno()
@@ -112,7 +116,7 @@ def peek_filelike_length(stream: typing.Any) -> int | None:
             # Not even that? Sorry, we're doomed...
             return None
 
-    return length
+    return max(0, length - start)
 
 
 class URLPattern:
