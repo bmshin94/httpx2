@@ -89,7 +89,7 @@ def test_gzip_file_content() -> None:
     with tempfile.TemporaryFile() as raw:
         raw.write(gzip.compress(content))
         raw.seek(0)
-        with gzip.GzipFile(fileobj=raw) as file:
+        with gzip.GzipFile(fileobj=raw, mode="rb") as file:
             file.read(4)
             request = httpx2.Request(method, url, content=file)
             assert file.tell() == 4
