@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import bz2
+import gzip
 import io
+import lzma
 import os
 import tempfile
 import typing
@@ -10,6 +13,8 @@ import pytest
 import httpx2
 
 if typing.TYPE_CHECKING:
+    from pathlib import Path
+
     from tests.httpx2.conftest import TestServer
 
 method = "POST"
@@ -94,6 +99,26 @@ def test_file_content(server: TestServer, file_factory: typing.Callable[[], typi
         assert file.tell() == offset
         assert response.headers["Content-Length"] == str(len(expected))
         assert response.read() == expected
+
+
+@pytest.mark.parametrize("open_file", [gzip.open, bz2.open, lzma.open])
+@pytest.mark.parametrize("offset", [0, 4, 1000])
+def test_compressed_file_content(
+    server: TestServer, tmp_path: Path, open_file: typing.Callable[..., typing.BinaryIO], offset: int
+) -> None:
+    path = tmp_path / "compressed"
+    content = b"0123456789" * 100
+    with open_file(path, "wb") as file:
+        file.write(content)
+
+    with open_file(path, "rb") as file, httpx2.Client() as client:
+        file.read(offset)
+        request = client.build_request("POST", server.url.copy_with(path="/echo_body"), content=file)
+        assert file.tell() == offset
+        assert request.headers["Content-Length"] == str(len(content) - offset)
+        response = client.send(request)
+        assert response.status_code == 200
+        assert response.content == content[offset:]
 
 
 def test_non_seekable_file_content() -> None:

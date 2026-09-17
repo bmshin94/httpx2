@@ -92,31 +92,23 @@ def to_bytes_or_str(value: str, match_type_of: typing.AnyStr) -> typing.AnyStr:
 
 def peek_filelike_length(stream: typing.Any, *, from_current_position: bool = False) -> int | None:
     """
-    Return the full or remaining length of a file-like stream without reading it.
+    Return the full or remaining byte length, preserving the stream position.
     """
+    # A wrapped stream's logical offsets may differ from its file descriptor's offsets.
+    if not from_current_position:
+        try:
+            return os.fstat(stream.fileno()).st_size
+        except (AttributeError, OSError):
+            pass
+
     try:
-        start = stream.tell() if from_current_position else 0
+        offset = stream.tell()
+        length: int = stream.seek(0, os.SEEK_END)
+        stream.seek(offset)
     except (AttributeError, OSError):
         return None
 
-    try:
-        # Is it an actual file?
-        fd = stream.fileno()
-        # Yup, seems to be an actual file.
-        length = os.fstat(fd).st_size
-    except (AttributeError, OSError):
-        # No... Maybe it's something that supports random access, like `io.BytesIO`?
-        try:
-            # Assuming so, go to end of stream to figure out its length,
-            # then put it back in place.
-            offset = stream.tell()
-            length = stream.seek(0, os.SEEK_END)
-            stream.seek(offset)
-        except (AttributeError, OSError):
-            # Not even that? Sorry, we're doomed...
-            return None
-
-    return max(0, length - start)
+    return max(0, length - offset) if from_current_position else length
 
 
 class URLPattern:
